@@ -2,6 +2,45 @@
 
 require __DIR__.'/../vendor/autoload.php';
 
+// Minimal helpers for standalone testing without full Laravel app
+if (!function_exists('app')) {
+    function app($abstract = null, array $parameters = []) {
+        $container = \Illuminate\Container\Container::getInstance();
+        if ($abstract === null) {
+            return $container;
+        }
+        return $container->make($abstract, $parameters);
+    }
+}
+
+if (!function_exists('config')) {
+    function config($key = null, $default = null) {
+        $repo = \Illuminate\Container\Container::getInstance()->make('config');
+        if ($key === null) {
+            return $repo;
+        }
+        if (is_array($key)) {
+            foreach ($key as $k => $v) {
+                $repo->set($k, $v);
+            }
+            return $repo;
+        }
+        return $repo->get($key, $default);
+    }
+}
+
+if (!function_exists('now')) {
+    function now($tz = null) {
+        return \Illuminate\Support\Carbon::now($tz);
+    }
+}
+
+if (!function_exists('collect')) {
+    function collect($value = null) {
+        return \Illuminate\Support\Collection::make($value);
+    }
+}
+
 // Minimal Laravel container bootstrapping for console + DB + Storage
 use Illuminate\Container\Container;
 use Illuminate\Events\Dispatcher;
