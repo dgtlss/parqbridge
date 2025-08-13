@@ -46,36 +46,49 @@ class ExportTableCommand extends Command
 
         $this->info("Writing to disk '{$disk}' path '{$path}' with Apache Parquet (external backend)...");
 
-        // Create temp CSV and stream rows
-        $tmpCsv = tempnam(sys_get_temp_dir(), 'parq_csv_');
+        $transport = (string) config('parqbridge.transport', 'jsonl');
+        $isJsonl = strtolower($transport) === 'jsonl';
+
+        // Create temp file and stream rows
+        $tmpCsv = tempnam(sys_get_temp_dir(), $isJsonl ? 'parq_jsonl_' : 'parq_tsv_');
         if ($tmpCsv === false) {
-            $this->error('Failed to create temporary CSV file');
+            $this->error('Failed to create temporary temp file');
             return self::FAILURE;
         }
         $fp = fopen($tmpCsv, 'w');
         if ($fp === false) {
-            $this->error('Failed to open temporary CSV file');
+            $this->error('Failed to open temporary temp file');
             return self::FAILURE;
         }
 
-        // Header (use TSV to minimize conflicts with commas in text/JSON)
-        $headers = array_map(fn($c) => $c['name'], $schema);
-        fputcsv($fp, $headers, "\t");
+        // Stream rows in selected transport
 
         $rowCount = 0;
         $query->orderBy(DB::raw('1'))
-            ->chunk($chunkSize, function ($rows) use (&$rowCount, $fp, $schema) {
+            ->chunk($chunkSize, function ($rows) use (&$rowCount, $fp, $schema, $isJsonl) {
                 foreach ($rows as $row) {
                     $row = (array) $row;
-                    $out = [];
-                    foreach ($schema as $col) {
-                        $name = $col['name'];
-                        $ptype = $col['parquet_type'];
-                        $logical = $col['logical_type'] ?? null;
-                        $val = $row[$name] ?? null;
-                        $out[] = $this->csvValue($val, $ptype, $logical);
+                    if ($isJsonl) {
+                        $obj = [];
+                        foreach ($schema as $col) {
+                            $name = $col['name'];
+                            $ptype = $col['parquet_type'];
+                            $logical = $col['logical_type'] ?? null;
+                            $val = $row[$name] ?? null;
+                            $obj[$name] = $this->jsonValue($val, $ptype, $logical);
+                        }
+                        fwrite($fp, json_encode($obj, JSON_UNESCAPED_UNICODE)."\n");
+                    } else {
+                        $out = [];
+                        foreach ($schema as $col) {
+                            $name = $col['name'];
+                            $ptype = $col['parquet_type'];
+                            $logical = $col['logical_type'] ?? null;
+                            $val = $row[$name] ?? null;
+                            $out[] = $this->csvValue($val, $ptype, $logical);
+                        }
+                        fputcsv($fp, $out, "\t");
                     }
-                    fputcsv($fp, $out, "\t");
                     $rowCount++;
                 }
             });
@@ -136,7 +149,8 @@ class ExportTableCommand extends Command
         if (in_array($ptype, ['BYTE_ARRAY','FIXED_LEN_BYTE_ARRAY'], true)) {
             if (($logical ?? null) === 'UTF8') {
                 $s = (string) $value;
-                return str_replace("\t", ' ', $s);
+                // Encode UTF8 text to base64 for robust TSV transport
+                return base64_encode($s);
             }
             // Base64 encode raw binary for CSV safety, converter will decode
             if (is_resource($value)) {
@@ -145,6 +159,33 @@ class ExportTableCommand extends Command
             return base64_encode((string) $value);
         }
         $s = (string) $value;
+        // Numeric/boolean and other scalars are safe; ensure tabs are not present
         return str_replace("\t", ' ', $s);
+    }
+
+    private function jsonValue($value, string $ptype, ?string $logical)
+    {
+        if ($value === null) return null;
+        // Reuse csvValue transforms for temporal formatting, then adjust string/binary handling
+        if (in_array($ptype, ['INT32','INT64','FLOAT','DOUBLE','BOOLEAN'], true)) {
+            return $value;
+        }
+        if ($ptype === 'INT32' && $logical === 'DATE') {
+            return $this->csvValue($value, $ptype, $logical);
+        }
+        if ($ptype === 'INT32' && $logical === 'TIME_MILLIS') {
+            return $this->csvValue($value, $ptype, $logical);
+        }
+        if ($ptype === 'INT64' && in_array($logical, ['TIME_MICROS','TIMESTAMP_MICROS','TIMESTAMP_MILLIS'], true)) {
+            return $this->csvValue($value, $ptype, $logical);
+        }
+        if (in_array($ptype, ['BYTE_ARRAY','FIXED_LEN_BYTE_ARRAY'], true)) {
+            if (($logical ?? null) === 'UTF8') {
+                return (string) $value; // keep text as is; Python will keep as string
+            }
+            if (is_resource($value)) $value = stream_get_contents($value);
+            return base64_encode((string) $value);
+        }
+        return (string) $value;
     }
 }

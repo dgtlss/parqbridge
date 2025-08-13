@@ -95,6 +95,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Transport Format (intermediate stream)
+    |--------------------------------------------------------------------------
+    | Format used to stream DB rows to the external writer.
+    | - jsonl: newline-delimited JSON (robust for complex text/JSON fields)
+    | - tsv:   tab-separated values with quoting
+    | .env: PARQBRIDGE_TRANSPORT=jsonl
+    */
+    'transport' => env('PARQBRIDGE_TRANSPORT', 'jsonl'),
+
+    /*
+    |--------------------------------------------------------------------------
     | PyArrow CSV Read Block Size (bytes)
     |--------------------------------------------------------------------------
     | Increase this if you see errors such as: "straddling object straddles two

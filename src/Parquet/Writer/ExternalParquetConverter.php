@@ -5,7 +5,7 @@ namespace ParqBridge\Parquet\Writer;
 class ExternalParquetConverter
 {
     /**
-     * Convert a CSV file to a true Apache Parquet file using an external backend (default: PyArrow via python3).
+     * Convert a delimited/JSONL file to a true Apache Parquet file using an external backend (default: PyArrow via python3).
      *
      * @param string $csvPath Local filesystem path to input CSV with header.
      * @param string $parquetPath Local filesystem path to output Parquet file.
@@ -90,8 +90,9 @@ class ExternalParquetConverter
                 'nullable' => (bool) ($col['nullable'] ?? true),
                 'precision' => isset($col['precision']) ? (int) $col['precision'] : null,
                 'scale' => isset($col['scale']) ? (int) $col['scale'] : null,
-                // We will base64-encode non-UTF8 BYTE_ARRAY in CSV to avoid delimiter issues
-                'binary_base64' => ($col['parquet_type'] === 'BYTE_ARRAY' && (($col['logical_type'] ?? null) !== 'UTF8')),
+                // We base64-encode all byte arrays in TSV transport
+                'binary_base64' => in_array($col['parquet_type'], ['BYTE_ARRAY','FIXED_LEN_BYTE_ARRAY'], true),
+                'is_utf8' => (($col['parquet_type'] === 'BYTE_ARRAY') && (($col['logical_type'] ?? null) === 'UTF8')),
             ];
         }
         return ['columns' => $cols];
@@ -145,6 +146,7 @@ def main():
         schema_spec = json.load(f)
     column_types = {}
     binary_b64_cols = set()
+    utf8_cols = set()
     ts_micros_cols = set()
     ts_millis_cols = set()
     for c in schema_spec['columns']:
@@ -162,15 +164,58 @@ def main():
             column_types[name] = t
         if c.get('binary_base64'):
             binary_b64_cols.add(name)
+        if c.get('is_utf8'):
+            utf8_cols.add(name)
     convert_opts = pv.ConvertOptions(column_types=column_types, null_values=['', 'NULL', 'NaN'])
-    # Read as TSV to avoid conflicts with commas/quotes inside JSON/text fields
-    table = pv.read_csv(
-        csv_path,
-        read_options=pv.ReadOptions(autogenerate_column_names=False, block_size=int(block_size)),
-        # Keep standard quoting to remain compatible across PyArrow versions
-        parse_options=pv.ParseOptions(delimiter='\t', newlines_in_values=True, quote_char='"', double_quote=True, escape_char='"'),
-        convert_options=convert_opts
-    )
+    # Detect JSONL vs TSV by peeking first non-empty char
+    # Determine transport from schema hint or file content
+    transport = 'jsonl'
+    try:
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            ch = f.read(1)
+            if ch and ch not in '{[':
+                transport = 'tsv'
+    except Exception:
+        transport = 'tsv'
+
+    if transport == 'jsonl':
+        # JSON Lines ingestion
+        rows = []
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                rows.append(json.loads(line))
+        # Build columns in schema order for stable typing
+        arrays = []
+        names = []
+        for c in schema_spec['columns']:
+            name = c['name']
+            logical = c['logical']
+            is_utf8 = (c.get('is_utf8') is True)
+            if logical in ('TIMESTAMP_MICROS','TIMESTAMP_MILLIS'):
+                # parse after creating table
+                col = pa.array([r.get(name) for r in rows], type=pa.string())
+            elif is_utf8:
+                col = pa.array([r.get(name) for r in rows], type=pa.string())
+            elif c.get('binary_base64'):
+                col = pa.array([r.get(name) for r in rows], type=pa.string())
+            else:
+                # Let Arrow infer via convert later if needed
+                col = pa.array([r.get(name) for r in rows])
+            arrays.append(col)
+            names.append(name)
+        table = pa.table(arrays, names=names)
+    else:
+        # Read as TSV to avoid conflicts with commas/quotes inside JSON/text fields
+        table = pv.read_csv(
+            csv_path,
+            read_options=pv.ReadOptions(autogenerate_column_names=False, block_size=int(block_size)),
+            # Keep standard quoting to remain compatible across PyArrow versions
+            parse_options=pv.ParseOptions(delimiter='\t', newlines_in_values=True, quote_char='"', double_quote=True, escape_char='"'),
+            convert_options=convert_opts
+        )
     # Decode base64 binary columns
     cols = []
     names = []
@@ -179,8 +224,28 @@ def main():
         col = table[name]
         if name in binary_b64_cols:
             pylist = col.to_pylist()
-            decoded = [base64.b64decode(x) if x is not None and x != '' else None for x in pylist]
-            col = pa.array(decoded, type=pa.binary())
+            if name in utf8_cols:
+                decoded_text = []
+                for x in pylist:
+                    if x is None or x == '':
+                        decoded_text.append(None)
+                        continue
+                    try:
+                        decoded_text.append(base64.b64decode(x).decode('utf-8'))
+                    except Exception:
+                        decoded_text.append(x)
+                col = pa.array(decoded_text, type=pa.string())
+            else:
+                decoded_bytes = []
+                for x in pylist:
+                    if x is None or x == '':
+                        decoded_bytes.append(None)
+                        continue
+                    try:
+                        decoded_bytes.append(base64.b64decode(x))
+                    except Exception:
+                        decoded_bytes.append(x.encode('utf-8'))
+                col = pa.array(decoded_bytes, type=pa.binary())
         if name in ts_micros_cols:
             # Parse with Python for robustness (handles variable fraction length)
             pylist = col.to_pylist()
