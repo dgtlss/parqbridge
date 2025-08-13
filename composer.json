@@ -5,7 +5,7 @@
   "license": "MIT",
   "version": "1.0.0",
   "authors": [
-    { "name": "ParqBridge", "email": "dev@example.com" }
+    { "name": "Nathan Langer", "email": "nathanlanger@googlemail.com" }
   ],
   "require": {
     "php": ">=8.1"
