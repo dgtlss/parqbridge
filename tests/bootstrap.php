@@ -55,7 +55,15 @@ use Illuminate\Database\DatabaseManager;
 use Illuminate\Console\Application as ConsoleApplication;
 use ParqBridge\ParqBridgeServiceProvider;
 
-$app = new Container();
+// Minimal application container that mimics a few Laravel Application methods
+if (!class_exists('TestApplication')) {
+    class TestApplication extends Container {
+        public function runningUnitTests(): bool { return true; }
+        public function runningInConsole(): bool { return true; }
+    }
+}
+
+$app = new TestApplication();
 Container::setInstance($app);
 
 $app->instance('app', $app);
