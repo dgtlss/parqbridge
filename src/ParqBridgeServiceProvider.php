@@ -13,10 +13,13 @@ class ParqBridgeServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        if ($this->app->runningInConsole()) {
-            $this->publishes([
-                __DIR__.'/../config/parqbridge.php' => config_path('parqbridge.php'),
-            ], 'parqbridge-config');
+        // Guard for minimal containers used in tests where runningInConsole isn't available
+        if (method_exists($this->app, 'runningInConsole') && $this->app->runningInConsole()) {
+            if (function_exists('config_path')) {
+                $this->publishes([
+                    __DIR__.'/../config/parqbridge.php' => config_path('parqbridge.php'),
+                ], 'parqbridge-config');
+            }
 
             $this->commands([
                 \ParqBridge\Console\ExportTableCommand::class,
