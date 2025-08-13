@@ -92,4 +92,14 @@ return [
     | .env: PARQBRIDGE_CUSTOM_CMD="duckdb -c \"COPY (SELECT * FROM read_csv_auto({input})) TO {output} (FORMAT PARQUET)\""
     */
     'custom_command' => env('PARQBRIDGE_CUSTOM_CMD', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | PyArrow CSV Read Block Size (bytes)
+    |--------------------------------------------------------------------------
+    | Increase this if you see errors such as: "straddling object straddles two
+    | block boundaries" when reading very large TSV rows. Default: 64 MiB.
+    | .env: PARQBRIDGE_PYARROW_BLOCK_SIZE=67108864
+    */
+    'pyarrow_block_size' => (int) env('PARQBRIDGE_PYARROW_BLOCK_SIZE', 64 * 1024 * 1024),
 ];

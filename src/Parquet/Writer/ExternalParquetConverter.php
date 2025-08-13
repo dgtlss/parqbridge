@@ -35,6 +35,7 @@ class ExternalParquetConverter
     private function convertWithPyArrow(string $csvPath, string $parquetPath, array $schema, string $compression): void
     {
         $python = (string) config('parqbridge.pyarrow_python', 'python3');
+        $block = (int) config('parqbridge.pyarrow_block_size', 64 * 1024 * 1024);
         $scriptPath = tempnam(sys_get_temp_dir(), 'parq_py_');
         $schemaPath = tempnam(sys_get_temp_dir(), 'parq_schema_');
         if ($scriptPath === false || $schemaPath === false) {
@@ -55,7 +56,7 @@ class ExternalParquetConverter
             $codec = 'NONE';
         }
 
-        $cmd = escapeshellarg($python) . ' ' . escapeshellarg($scriptPath) . ' ' . escapeshellarg($csvPath) . ' ' . escapeshellarg($parquetPath) . ' ' . escapeshellarg($schemaPath) . ' ' . escapeshellarg($codec);
+        $cmd = escapeshellarg($python) . ' ' . escapeshellarg($scriptPath) . ' ' . escapeshellarg($csvPath) . ' ' . escapeshellarg($parquetPath) . ' ' . escapeshellarg($schemaPath) . ' ' . escapeshellarg($codec) . ' ' . escapeshellarg((string)$block);
         $this->runShell($cmd);
 
         @unlink($scriptPath);
@@ -139,7 +140,7 @@ def arrow_type(ptype, logical, precision, scale):
     return pa.binary()
 
 def main():
-    csv_path, out_path, schema_json_path, compression = sys.argv[1:5]
+    csv_path, out_path, schema_json_path, compression, block_size = sys.argv[1:6]
     with open(schema_json_path, 'r') as f:
         schema_spec = json.load(f)
     column_types = {}
@@ -165,7 +166,7 @@ def main():
     # Read as TSV to avoid conflicts with commas/quotes inside JSON/text fields
     table = pv.read_csv(
         csv_path,
-        read_options=pv.ReadOptions(autogenerate_column_names=False),
+        read_options=pv.ReadOptions(autogenerate_column_names=False, block_size=int(block_size)),
         # Keep standard quoting to remain compatible across PyArrow versions
         parse_options=pv.ParseOptions(delimiter='\t', newlines_in_values=True, quote_char='"', double_quote=True, escape_char='"'),
         convert_options=convert_opts
