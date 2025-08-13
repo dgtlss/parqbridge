@@ -1,5 +1,11 @@
 # ParqBridge
 
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/dgtlss/parqbridge.svg?style=flat-square)](https://packagist.org/packages/dgtlss/parqbridge)
+[![Total Downloads](https://img.shields.io/packagist/dt/dgtlss/parqbridge.svg?style=flat-square)](https://packagist.org/packages/dgtlss/parqbridge)
+[![License](https://img.shields.io/packagist/l/dgtlss/parqbridge.svg?style=flat-square)](https://packagist.org/packages/dgtlss/parqbridge)
+[![PHP Version Require](https://img.shields.io/packagist/php-v/dgtlss/parqbridge.svg?style=flat-square)](https://packagist.org/packages/dgtlss/parqbridge)
+![GitHub repo size](https://img.shields.io/github/repo-size/dgtlss/parqbridge)
+
 Export your Laravel database tables to real Apache Parquet files on any Storage disk (local, S3, etc.) with a simple artisan command.
 
 ParqBridge focuses on zero PHP dependency bloat while still producing spec-compliant Parquet files by delegating the final write step to a tiny, embedded Python script using PyArrow (or any custom CLI you prefer). You keep full Laravel DX for configuration and Storage; we bridge your data to Parquet.

@@ -162,10 +162,11 @@ def main():
         if c.get('binary_base64'):
             binary_b64_cols.add(name)
     convert_opts = pv.ConvertOptions(column_types=column_types, null_values=['', 'NULL', 'NaN'])
+    # Read as TSV to avoid conflicts with commas/quotes inside JSON/text fields
     table = pv.read_csv(
         csv_path,
         read_options=pv.ReadOptions(autogenerate_column_names=False),
-        parse_options=pv.ParseOptions(delimiter=',', newlines_in_values=True),
+        parse_options=pv.ParseOptions(delimiter='\t', newlines_in_values=True, quote_char='\0'),
         convert_options=convert_opts
     )
     # Decode base64 binary columns

@@ -58,9 +58,9 @@ class ExportTableCommand extends Command
             return self::FAILURE;
         }
 
-        // Header
+        // Header (use TSV to minimize conflicts with commas in text/JSON)
         $headers = array_map(fn($c) => $c['name'], $schema);
-        fputcsv($fp, $headers);
+        fputcsv($fp, $headers, "\t");
 
         $rowCount = 0;
         $query->orderBy(DB::raw('1'))
@@ -75,7 +75,7 @@ class ExportTableCommand extends Command
                         $val = $row[$name] ?? null;
                         $out[] = $this->csvValue($val, $ptype, $logical);
                     }
-                    fputcsv($fp, $out);
+                    fputcsv($fp, $out, "\t");
                     $rowCount++;
                 }
             });
@@ -91,22 +91,12 @@ class ExportTableCommand extends Command
         }
         $tmpParquet .= '.parquet';
 
-        try {
-            $converter = new ExternalParquetConverter();
-            $converter->convertCsvToParquet($tmpCsv, $tmpParquet, $schema, (string) config('parqbridge.compression', 'UNCOMPRESSED'));
+        $converter = new ExternalParquetConverter();
+        $converter->convertCsvToParquet($tmpCsv, $tmpParquet, $schema, (string) config('parqbridge.compression', 'UNCOMPRESSED'));
 
-            // Push to disk
-            $bytes = @file_get_contents($tmpParquet);
-            if ($bytes === false) {
-                throw new \RuntimeException('Failed to read generated Parquet file');
-            }
-            Storage::disk($disk)->put($path, $bytes);
-        } catch (\Throwable $e) {
-            $this->error('Parquet conversion failed: ' . $e->getMessage());
-            @unlink($tmpCsv);
-            @unlink($tmpParquet);
-            return self::FAILURE;
-        }
+        // Push to disk
+        $bytes = file_get_contents($tmpParquet);
+        Storage::disk($disk)->put($path, $bytes);
 
         @unlink($tmpCsv);
         @unlink($tmpParquet);
@@ -145,7 +135,8 @@ class ExportTableCommand extends Command
         }
         if (in_array($ptype, ['BYTE_ARRAY','FIXED_LEN_BYTE_ARRAY'], true)) {
             if (($logical ?? null) === 'UTF8') {
-                return (string) $value;
+                $s = (string) $value;
+                return str_replace("\t", ' ', $s);
             }
             // Base64 encode raw binary for CSV safety, converter will decode
             if (is_resource($value)) {
@@ -153,6 +144,7 @@ class ExportTableCommand extends Command
             }
             return base64_encode((string) $value);
         }
-        return (string) $value;
+        $s = (string) $value;
+        return str_replace("\t", ' ', $s);
     }
 }
