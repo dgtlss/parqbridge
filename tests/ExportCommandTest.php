@@ -55,6 +55,11 @@ class ExportCommandTest extends TestCase
         $input = new \Symfony\Component\Console\Input\ArrayInput(array_merge(['command' => $command->getName()], $arguments));
         $output = new \Symfony\Component\Console\Output\BufferedOutput();
         $exitCode = $command->run($input, $output);
-        return ['exitCode' => $exitCode, 'output' => $output->fetch()];
+        $out = $output->fetch();
+        if ($exitCode !== 0) {
+            // Bubble command errors into the test output for easier debugging in CI
+            fwrite(STDERR, $out);
+        }
+        return ['exitCode' => $exitCode, 'output' => $out];
     }
 }

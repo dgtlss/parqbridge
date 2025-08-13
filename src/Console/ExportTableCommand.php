@@ -91,12 +91,22 @@ class ExportTableCommand extends Command
         }
         $tmpParquet .= '.parquet';
 
-        $converter = new ExternalParquetConverter();
-        $converter->convertCsvToParquet($tmpCsv, $tmpParquet, $schema, (string) config('parqbridge.compression', 'UNCOMPRESSED'));
+        try {
+            $converter = new ExternalParquetConverter();
+            $converter->convertCsvToParquet($tmpCsv, $tmpParquet, $schema, (string) config('parqbridge.compression', 'UNCOMPRESSED'));
 
-        // Push to disk
-        $bytes = file_get_contents($tmpParquet);
-        Storage::disk($disk)->put($path, $bytes);
+            // Push to disk
+            $bytes = @file_get_contents($tmpParquet);
+            if ($bytes === false) {
+                throw new \RuntimeException('Failed to read generated Parquet file');
+            }
+            Storage::disk($disk)->put($path, $bytes);
+        } catch (\Throwable $e) {
+            $this->error('Parquet conversion failed: ' . $e->getMessage());
+            @unlink($tmpCsv);
+            @unlink($tmpParquet);
+            return self::FAILURE;
+        }
 
         @unlink($tmpCsv);
         @unlink($tmpParquet);

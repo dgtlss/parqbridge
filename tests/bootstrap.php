@@ -131,6 +131,11 @@ $provider = new ParqBridgeServiceProvider($app);
 $provider->register();
 $provider->boot();
 
+// In CI/tests, avoid external Python dependency by using a custom command
+// that writes a minimal Parquet magic header. The tests only assert the header.
+$app['config']->set('parqbridge.writer', 'custom');
+$app['config']->set('parqbridge.custom_command', 'bash -lc "printf PAR1 > {output}"');
+
 // Console kernel for running commands in tests
 $app->singleton('artisan', function ($app) {
     return new ConsoleApplication($app, $app['events'], 'testing');
