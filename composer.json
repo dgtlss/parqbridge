@@ -3,6 +3,7 @@
   "description": "Export Laravel database tables to Parquet files using Storage disks (no external deps).",
   "type": "library",
   "license": "MIT",
+  "version": "1.0.0",
   "authors": [
     { "name": "ParqBridge", "email": "dev@example.com" }
   ],
