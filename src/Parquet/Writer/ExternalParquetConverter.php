@@ -166,7 +166,8 @@ def main():
     table = pv.read_csv(
         csv_path,
         read_options=pv.ReadOptions(autogenerate_column_names=False),
-        parse_options=pv.ParseOptions(delimiter='\t', newlines_in_values=True, quote_char='\0'),
+        # Keep standard quoting to remain compatible across PyArrow versions
+        parse_options=pv.ParseOptions(delimiter='\t', newlines_in_values=True, quote_char='"', double_quote=True, escape_char='"'),
         convert_options=convert_opts
     )
     # Decode base64 binary columns
