@@ -1,11 +1,5 @@
 # ParqBridge
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/dgtlss/parqbridge.svg?style=flat-square)](https://packagist.org/packages/dgtlss/parqbridge)
-[![Total Downloads](https://img.shields.io/packagist/dt/dgtlss/parqbridge.svg?style=flat-square)](https://packagist.org/packages/dgtlss/parqbridge)
-[![License](https://img.shields.io/packagist/l/dgtlss/parqbridge.svg?style=flat-square)](https://packagist.org/packages/dgtlss/parqbridge)
-[![PHP Version Require](https://img.shields.io/packagist/php-v/dgtlss/parqbridge.svg?style=flat-square)](https://packagist.org/packages/dgtlss/parqbridge)
-![GitHub repo size](https://img.shields.io/github/repo-size/dgtlss/parqbridge)
-
 Export your Laravel database tables to real Apache Parquet files on any Storage disk (local, S3, etc.) with a simple artisan command.
 
 ParqBridge focuses on zero PHP dependency bloat while still producing spec-compliant Parquet files by delegating the final write step to a tiny, embedded Python script using PyArrow (or any custom CLI you prefer). You keep full Laravel DX for configuration and Storage; we bridge your data to Parquet.
@@ -47,6 +41,30 @@ PARQUET_CHUNK_SIZE=2000
 ```
 
 Ensure your `filesystems` disk is configured (e.g., `s3`) in `config/filesystems.php`.
+
+### FTP disk configuration
+
+You can export directly to an FTP server using Laravel's `ftp` disk. Add an FTP disk to `config/filesystems.php` and reference it via `PARQUET_DISK=ftp` or `--disk=ftp`.
+
+```php
+'disks' => [
+    'ftp' => [
+        'driver' => 'ftp',
+        'host' => env('FTP_HOST'),
+        'username' => env('FTP_USERNAME'),
+        'password' => env('FTP_PASSWORD'),
+
+        // Optional FTP settings
+        'port' => (int) env('FTP_PORT', 21),
+        'root' => env('FTP_ROOT', ''),
+        'passive' => filter_var(env('FTP_PASSIVE', true), FILTER_VALIDATE_BOOL),
+        'ssl' => filter_var(env('FTP_SSL', false), FILTER_VALIDATE_BOOL),
+        'timeout' => (int) env('FTP_TIMEOUT', 90),
+    ],
+],
+```
+
+Note: This package will coerce common FTP env values (e.g., `port`, `timeout`, `passive`, `ssl`) to the proper types before resolving the disk to avoid Flysystem type errors like "Argument #5 ($port) must be of type int, string given".
 
 ## Usage
 

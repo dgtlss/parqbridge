@@ -22,6 +22,8 @@ class ExportTableCommand extends Command
         $chunkSize = (int) config('parqbridge.chunk_size');
 
         try {
+            // Normalize common FTP config pitfalls (env strings -> proper types)
+            $this->normalizeFilesystemDiskConfig($disk);
             // Resolve disk to ensure it's configured
             Storage::disk($disk);
         } catch (\Throwable $e) {
@@ -107,9 +109,21 @@ class ExportTableCommand extends Command
         $converter = new ExternalParquetConverter();
         $converter->convertCsvToParquet($tmpCsv, $tmpParquet, $schema, (string) config('parqbridge.compression', 'UNCOMPRESSED'));
 
-        // Push to disk
-        $bytes = file_get_contents($tmpParquet);
-        Storage::disk($disk)->put($path, $bytes);
+        // Push to disk using stream to support remote disks efficiently (e.g., FTP, S3)
+        $readStream = fopen($tmpParquet, 'r');
+        if ($readStream === false) {
+            @unlink($tmpCsv);
+            @unlink($tmpParquet);
+            $this->error('Failed to open Parquet file for reading');
+            return self::FAILURE;
+        }
+        try {
+            Storage::disk($disk)->writeStream($path, $readStream);
+        } finally {
+            if (is_resource($readStream)) {
+                fclose($readStream);
+            }
+        }
 
         @unlink($tmpCsv);
         @unlink($tmpParquet);
@@ -117,6 +131,59 @@ class ExportTableCommand extends Command
         $this->info("Exported {$rowCount} rows to {$path}");
         $this->line($path);
         return self::SUCCESS;
+    }
+
+    /**
+     * Coerce known numeric/boolean options on the target filesystem disk to proper types.
+     * This primarily helps with FTP where Flysystem uses strict types under strict_types=1.
+     */
+    private function normalizeFilesystemDiskConfig(string $disk): void
+    {
+        $key = "filesystems.disks.{$disk}";
+        $cfg = config($key);
+        if (!is_array($cfg)) {
+            return;
+        }
+
+        // Only normalize for FTP-like configs to avoid unintended changes
+        $driver = $cfg['driver'] ?? null;
+        $looksLikeFtp = $driver === 'ftp' || isset($cfg['host']) && array_key_exists('port', $cfg);
+        if (!$looksLikeFtp) {
+            return;
+        }
+
+        $booleanKeys = [
+            'ssl', 'passive', 'utf8', 'ignorePassiveAddress', 'timestampsOnUnixListingsEnabled', 'reconnectAfterTimeout',
+        ];
+        $intKeys = [
+            'port', 'timeout', 'transferMode',
+        ];
+
+        $updated = false;
+
+        foreach ($intKeys as $k) {
+            if (isset($cfg[$k]) && !is_int($cfg[$k]) && $cfg[$k] !== null) {
+                $cfg[$k] = (int) $cfg[$k];
+                $updated = true;
+            }
+        }
+
+        foreach ($booleanKeys as $k) {
+            if (isset($cfg[$k]) && !is_bool($cfg[$k]) && $cfg[$k] !== null) {
+                $v = $cfg[$k];
+                if (is_string($v)) {
+                    $v = strtolower($v);
+                    $cfg[$k] = in_array($v, ['1','true','on','yes'], true);
+                } else {
+                    $cfg[$k] = (bool) $v;
+                }
+                $updated = true;
+            }
+        }
+
+        if ($updated) {
+            config([$key => $cfg]);
+        }
     }
 
     private function csvValue($value, string $ptype, ?string $logical)
