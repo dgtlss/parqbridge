@@ -15,8 +15,8 @@ class ExportAllTablesCommand extends Command
         $disk = (string) ($this->option('disk') ?: config('parqbridge.disk'));
         $rootOutput = (string) ($this->option('output') ?: config('parqbridge.output_directory'));
 
-        $include = $this->parseCsvOption('include');
-        $exclude = $this->parseCsvOption('exclude');
+        $include = $this->mergeWithConfig('include');
+        $exclude = $this->mergeWithConfig('exclude');
 
         $tables = $this->getTables();
         if (!empty($include)) {
@@ -60,6 +60,15 @@ class ExportAllTablesCommand extends Command
         $raw = (string) ($this->option($name) ?: '');
         if ($raw === '') return [];
         return array_values(array_filter(array_map(fn($v) => trim($v), explode(',', $raw)), fn($v) => $v !== ''));
+    }
+
+    private function mergeWithConfig(string $name): array
+    {
+        $fromConfig = config("parqbridge.export.{$name}", []);
+        $fromCommand = $this->parseCsvOption($name);
+        
+        // Command line options override config
+        return !empty($fromCommand) ? $fromCommand : $fromConfig;
     }
 
     private function getTables(): array

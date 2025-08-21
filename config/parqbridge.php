@@ -113,4 +113,20 @@ return [
     | .env: PARQBRIDGE_PYARROW_BLOCK_SIZE=67108864
     */
     'pyarrow_block_size' => (int) env('PARQBRIDGE_PYARROW_BLOCK_SIZE', 64 * 1024 * 1024),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Export Tables - Include/Exclude Lists
+    |--------------------------------------------------------------------------
+    | Configure which tables to include or exclude when using export-all.
+    | These arrays work the same as --include and --exclude command options.
+    | Command line options will override these config values.
+    |
+    | include: Only export tables in this array (empty = all tables)
+    | exclude: Skip tables in this array (applied after include filter)
+    */
+    'export' => [
+        'include' => [],
+        'exclude' => [],
+    ],
 ];
